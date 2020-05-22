@@ -1,0 +1,70 @@
+WINEGCC=@WINEGCC@
+WINEGCC_FLAGS=@WINEGCC_FLAGS@
+CROSSCFLAGS=@CROSSCFLAGS@
+CROSSTARGET=@CROSSTARGET@
+CROSSCPU=@CROSSCPU@
+
+CMAKE_FLAGS=\
+	-DCMAKE_SYSTEM_NAME=Windows \
+	-DCMAKE_SYSTEM_PROCESSOR=$(CROSSCPU) \
+	-DCMAKE_C_COMPILER="$(WINEGCC)" \
+	-DCMAKE_C_FLAGS="$(WINEGCC_FLAGS) $(CROSSCFLAGS)" \
+	-DCMAKE_RC_COMPILER=$(CROSSTARGET)-windres \
+	-DBUILD_SHARED_LIBS=OFF
+
+SDL2_BUILD=build-sdl2
+SDL2_IMPORTS=-lshell32 -loleaut32 -lole32 -lwinmm -ladvapi32 -limm32 -lversion -luser32 -lgdi32
+LIBSDL2=$(SDL2_BUILD)/build/.libs/libSDL2.a
+
+all: faudio freetype2
+	echo Build done
+
+$(LIBSDL2): $(SDL2_BUILD)/Makefile
+	$(MAKE) -C $(SDL2_BUILD)
+
+$(SDL2_BUILD)/Makefile: Makefile config.status sdl2-src/configure
+	mkdir -p $(SDL2_BUILD)
+	cd $(SDL2_BUILD) && ../sdl2-src/configure --host=$(CROSSTARGET) CC="$(WINEGCC) $(WINEGCC_FLAGS)" \
+		CFLAGS="$(CROSSCFLAGS)" CPPFLAGS="-DWINE_USE_LONG -DDECLSPEC= -DWINVER=0x0a00" \
+		LD=false lt_cv_prog_gnu_ld=yes
+
+sdl: $(LIBSDL2)
+
+FAUDIO_DLL=winefaudio.dll
+FAUDIO_BUILD=build-faudio
+LIBFAUDIO=$(FAUDIO_BUILD)/libFAudio.a
+
+$(FAUDIO_DLL): $(LIBFAUDIO) $(LIBSDL2) 
+	$(WINEGCC) $(WINEGCC_FLAGS) -o $@ -Wl,--whole-archive $(LIBFAUDIO) -Wl,--no-whole-archive \
+		 $(LIBSDL2) $(SDL2_IMPORTS) -Wl,--wine-builtin -shared
+
+$(LIBFAUDIO): $(FAUDIO_BUILD)/Makefile
+	$(MAKE) -C $(FAUDIO_BUILD)
+
+$(FAUDIO_BUILD)/Makefile: Makefile config.status
+	mkdir -p $(FAUDIO_BUILD)
+	cd $(FAUDIO_BUILD) && cmake $(CMAKE_FLAGS) \
+		-DSDL2_INCLUDE_DIRS="@abs_top_builddir@/sdl2-src/include/" \
+		-DSDL2_LIBRARIES="$(LIBSDL2)" \
+		../faudio-src
+
+faudio: $(FAUDIO_DLL)
+
+FREETYPE_DLL=winefreetype.dll
+FREETYPE_BUILD=build-freetype2
+LIBFREETYPE=$(FREETYPE_BUILD)/libfreetype.a
+
+$(FREETYPE_BUILD)/Makefile: Makefile config.status
+	mkdir -p $(FREETYPE_BUILD)
+	cd $(FREETYPE_BUILD) && cmake $(CMAKE_FLAGS) ../freetype2-src
+
+$(LIBFREETYPE): $(FREETYPE_BUILD)/Makefile
+	$(MAKE) -C $(FREETYPE_BUILD)
+
+$(FREETYPE_DLL): $(LIBFREETYPE)
+	$(WINEGCC) $(WINEGCC_FLAGS) -o $@ -Wl,--whole-archive $(LIBFREETYPE) -Wl,--no-whole-archive \
+		-Wl,--wine-builtin -shared
+
+freetype2: $(FREETYPE_DLL)
+
+.PHONY: all sdl faudio freetype2

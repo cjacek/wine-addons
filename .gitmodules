@@ -1,0 +1,9 @@
+[submodule "FAudio"]
+	path = FAudio
+	url = ../FAudio/
+[submodule "freetype2"]
+	path = freetype2
+	url = ../freetype2/
+[submodule "SDL"]
+	path = SDL
+	url = ../SDL/
